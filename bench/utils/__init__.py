@@ -274,6 +274,30 @@ def is_root():
 	return os.getuid() == 0
 
 
+def get_proot_aware_env(env: Optional[dict] = None) -> dict:
+	"""
+	Returns a copy of the environment with modifications for PRoot/Termux.
+	Specifically, it sets PYTHONSTARTUP to a script that disables hiredis
+	and suppresses fork warnings, which are problematic in PRoot.
+	"""
+	if env is None:
+		env = os.environ.copy()
+	else:
+		env = env.copy()
+
+	is_proot = (
+		os.environ.get("PROOT_DISTRO_INSTALLED_ROOTFS") or os.environ.get("TERMUX_VERSION")
+	)
+
+	if is_proot:
+		# Locate the fix script relative to this file
+		fix_script = os.path.join(os.path.dirname(__file__), "proot_fix.py")
+		if os.path.exists(fix_script):
+			env["PYTHONSTARTUP"] = fix_script
+
+	return env
+
+
 def run_frappe_cmd(*args, **kwargs):
 	from bench.cli import from_command_line
 	from bench.utils.bench import get_env_cmd
@@ -288,11 +312,14 @@ def run_frappe_cmd(*args, **kwargs):
 	else:
 		stderr = stdout = None
 
+	env = get_proot_aware_env()
+
 	p = subprocess.Popen(
 		(f, "-m", "frappe.utils.bench_helper", "frappe") + args,
 		cwd=sites_dir,
 		stdout=stdout,
 		stderr=stderr,
+		env=env,
 	)
 
 	return_code = print_output(p) if is_async else p.wait()
