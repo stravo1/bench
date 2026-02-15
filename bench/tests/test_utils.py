@@ -2,11 +2,12 @@ import os
 import shutil
 import subprocess
 import unittest
+from unittest.mock import patch
 
 from bench.app import App
 from bench.bench import Bench
 from bench.exceptions import InvalidRemoteException
-from bench.utils import is_valid_frappe_branch
+from bench.utils import get_proot_aware_env, is_valid_frappe_branch
 
 
 class TestUtils(unittest.TestCase):
@@ -104,3 +105,28 @@ class TestUtils(unittest.TestCase):
 		self.assertEqual(
 			(app.use_ssh, app.org, app.repo, app.app_name), (True, "frappe", "frappe", "frappe")
 		)
+
+	def test_get_proot_aware_env(self):
+		# Test with PROOT_DISTRO_INSTALLED_ROOTFS
+		with patch.dict(os.environ, {"PROOT_DISTRO_INSTALLED_ROOTFS": "1"}):
+			env = get_proot_aware_env()
+			self.assertIn("PYTHONSTARTUP", env)
+			self.assertTrue(env["PYTHONSTARTUP"].endswith("proot_fix.py"))
+
+		# Test with TERMUX_VERSION
+		with patch.dict(os.environ, {"TERMUX_VERSION": "1"}):
+			env = get_proot_aware_env()
+			self.assertIn("PYTHONSTARTUP", env)
+			self.assertTrue(env["PYTHONSTARTUP"].endswith("proot_fix.py"))
+
+		# Test without PRoot vars
+		with patch.dict(os.environ):
+			if "PROOT_DISTRO_INSTALLED_ROOTFS" in os.environ:
+				del os.environ["PROOT_DISTRO_INSTALLED_ROOTFS"]
+			if "TERMUX_VERSION" in os.environ:
+				del os.environ["TERMUX_VERSION"]
+			# Ensure we don't accidentally test with inherited PRoot env if this test runs in PRoot
+
+			env = get_proot_aware_env()
+			if "PYTHONSTARTUP" not in os.environ:
+				self.assertNotIn("PYTHONSTARTUP", env)
